@@ -31,8 +31,8 @@ logger = logging.getLogger("OCRClient")
 # API 配置
 # ====================================================================
 
-JOB_URL = "https://paddleocr.aistudio-app.com/api/v2/ocr/jobs"
-TOKEN = "eb8c46b5fdc8e4b01d2f0da3cbb2bb03e9f0dea1"
+JOB_URL = ""
+TOKEN = ""
 MODEL = "PP-OCRv6"
 
 

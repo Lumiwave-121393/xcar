@@ -24,8 +24,8 @@ logger = logging.getLogger("LLMClient")
 # API 配置
 # ====================================================================
 
-API_URL = "https://qianfan.baidubce.com/v2/chat/completions"
-API_KEY = "bce-v3/ALTAK-gfaNk2DBB17lvU41Q3xXr/c198ffa474535b8921239f309c15ed91369a292d"
+API_URL = ""
+API_KEY = ""
 DEFAULT_MODEL = "ernie-4.5-turbo-32k"
 
 # 决策用的 system prompt
