@@ -1,0 +1,243 @@
+from __future__ import annotations
+
+from dataclasses import field
+import math
+from queue import Empty, Queue
+import threading
+import time
+from typing import Any, Callable, Dict, Optional
+
+from core.compat import slotted_dataclass
+from core.config import CONFIG
+from core.console import append_console_log
+from core.csv_export import CsvEventExporter
+from core.i18n import get_language
+
+
+EVENT_SAMPLE = "sample"
+EVENT_ROUND_METRICS = "round_metrics"
+EVENT_DECISION = "decision"
+EVENT_ROLLBACK = "rollback"
+EVENT_LIFECYCLE = "lifecycle"
+EVENT_LOG = "log"
+
+
+RuntimeEvent = Dict[str, Any]
+_CSV_EXPORTER = CsvEventExporter()
+
+
+def build_event(event_type: str, **payload: Any) -> RuntimeEvent:
+    return {"type": event_type, **payload}
+
+
+def drain_event_queue(event_queue: Queue[RuntimeEvent]) -> list[RuntimeEvent]:
+    events: list[RuntimeEvent] = []
+    while True:
+        try:
+            events.append(event_queue.get_nowait())
+        except Empty:
+            return events
+
+
+@slotted_dataclass
+class QueueEventSink:
+    event_queue: Queue[RuntimeEvent]
+    _sequence: int = 0
+    _lock: threading.Lock = field(default_factory=threading.Lock)
+
+    def publish(self, event_type: str, **payload: Any) -> None:
+        with self._lock:
+            self._sequence += 1
+            sequence = self._sequence
+            self.event_queue.put(build_event(event_type, seq=sequence, **payload))
+
+    def snapshot_sequence(self) -> int:
+        with self._lock:
+            return self._sequence
+
+
+@slotted_dataclass
+class SimulationController:
+    stop_event: threading.Event = field(default_factory=threading.Event)
+    run_event: threading.Event = field(default_factory=threading.Event)
+    _setpoint_lock: threading.Lock = field(default_factory=threading.Lock)
+    _requested_setpoint: float | None = None
+
+    def __post_init__(self) -> None:
+        self.run_event.set()
+
+    @property
+    def is_paused(self) -> bool:
+        return not self.run_event.is_set()
+
+    @property
+    def should_stop(self) -> bool:
+        return self.stop_event.is_set()
+
+    @should_stop.setter
+    def should_stop(self, value: bool) -> None:
+        if value:
+            self.stop_event.set()
+        else:
+            self.stop_event.clear()
+
+    def stop(self) -> None:
+        self.stop_event.set()
+
+    def wait_while_paused(self) -> bool:
+        while self.is_paused:
+            if self.should_stop:
+                return False
+            time.sleep(0.1)
+        return not self.should_stop
+
+    def pause(self) -> None:
+        self.run_event.clear()
+
+    def resume(self) -> None:
+        self.run_event.set()
+
+    def toggle_pause(self) -> bool:
+        if self.is_paused:
+            self.resume()
+        else:
+            self.pause()
+        return self.is_paused
+
+    def request_stop(self) -> None:
+        self.stop_event.set()
+        self.run_event.set()
+
+    def request_setpoint(self, setpoint: float) -> float:
+        value = float(setpoint)
+        if not math.isfinite(value):
+            raise ValueError("setpoint must be finite")
+        with self._setpoint_lock:
+            self._requested_setpoint = value
+        return value
+
+    def consume_setpoint_request(self) -> float | None:
+        with self._setpoint_lock:
+            value = self._requested_setpoint
+            self._requested_setpoint = None
+            return value
+
+    def wait_until_running(self, poll_interval: float = 0.05) -> bool:
+        while not self.stop_event.is_set():
+            if self.run_event.wait(timeout=poll_interval):
+                return True
+        return False
+
+
+def publish_event(event_sink: QueueEventSink | None, event_type: str, **payload: Any) -> None:
+    csv_export_path = str(CONFIG.get("CSV_EXPORT_PATH", "") or "").strip()
+    if csv_export_path:
+        _CSV_EXPORTER.handle_event(event_type, payload, csv_path=csv_export_path)
+    if event_sink is not None:
+        event_sink.publish(event_type, **payload)
+
+
+def reset_csv_exporter_for_tests() -> None:
+    _CSV_EXPORTER.reset()
+
+
+def now_elapsed(start_time: float) -> float:
+    return round(time.time() - start_time, 3)
+
+
+def emit_console_message(enabled: bool, message: str, *, end: str = "\n") -> None:
+    if enabled:
+        print(message, end=end, flush=True)
+        append_console_log(message, end=end)
+
+
+def emit_lifecycle(
+    event_sink: QueueEventSink | None, start_time: float, phase: str, message: str
+) -> None:
+    publish_event(
+        event_sink, EVENT_LIFECYCLE,
+        phase=phase, message=message, elapsed_sec=now_elapsed(start_time),
+    )
+
+
+def emit_log(
+    event_sink: QueueEventSink | None,
+    start_time: float,
+    label: str,
+    message: str,
+    *,
+    replace_last: bool = False,
+    stream_id: int | None = None,
+) -> None:
+    publish_event(
+        event_sink, EVENT_LOG,
+        label=label, message=message, replace_last=replace_last,
+        stream_id=stream_id, elapsed_sec=now_elapsed(start_time),
+    )
+
+
+def run_tui_tuning_session(
+    *,
+    mode_label: str,
+    initial_pid: Optional[Dict[str, float]],
+    run_round: Callable[
+        [Optional[Dict[str, float]], QueueEventSink, SimulationController],
+        Optional[Dict[str, Any]],
+    ],
+) -> Dict[str, Any]:
+    """Shared TUI scaffolding for the hardware/Python/Simulink tuning runners.
+
+    ``run_round(pid, event_sink, controller)`` performs one full tuning run and
+    returns its result dict (or ``None`` on failure).
+    """
+    from sim.tui import SimulationTUIApp
+
+    event_queue: Queue[RuntimeEvent] = Queue()
+    controller = SimulationController()
+    event_sink = QueueEventSink(event_queue)
+    result_box: Dict[str, Any] = {}
+
+    def make_worker(pid: Optional[Dict[str, float]]) -> Callable[[], None]:
+        def worker() -> None:
+            result = run_round(pid, event_sink, app.controller)
+            result_box["result"] = result
+            app._last_result = result or {}
+
+        return worker
+
+    def next_round_factory(last_result: Dict[str, Any]) -> Callable[[], None]:
+        pid = last_result.get("final_pid")
+        return make_worker(pid if isinstance(pid, dict) else None)
+
+    app = SimulationTUIApp(
+        event_queue=event_queue,
+        controller=controller,
+        worker_target=make_worker(initial_pid),
+        event_sink=event_sink,
+        mode_label=mode_label,
+        language=get_language(),
+        next_round_factory=next_round_factory,
+    )
+    app.run()
+    return result_box.get("result", {})
+
+
+def make_llm_tuner_callbacks(
+    event_sink: QueueEventSink | None,
+    start_time: float,
+    current_stream_round: list[int],
+):
+    """Build (log_cb, stream_cb) for LLMTuner that forward to emit_log."""
+    def log_cb(label: str, message: str) -> None:
+        emit_log(
+            event_sink, start_time, label, message,
+            stream_id=current_stream_round[0] or None,
+        )
+
+    def stream_cb(text: str, done: bool) -> None:
+        emit_log(
+            event_sink, start_time, "llm_stream", text,
+            replace_last=True, stream_id=current_stream_round[0] or None,
+        )
+
+    return log_cb, stream_cb

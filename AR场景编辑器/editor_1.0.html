@@ -1,0 +1,904 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>X-Verse 3D 赛道编辑器</title>
+<style>
+  :root { --bg: #1a1a2e; --panel: #16213e; --accent: #e94560; --text: #eee; --text2: #aaa; --border: #333; --input-bg: #0f3460; --hover: #533483; }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: 'Microsoft YaHei', 'PingFang SC', system-ui, sans-serif; background: var(--bg); color: var(--text); height: 100vh; overflow: hidden; display: flex; flex-direction: column; }
+  #toolbar { display: flex; align-items: center; gap: 8px; padding: 8px 12px; background: var(--panel); border-bottom: 1px solid var(--border); z-index: 10; flex-shrink: 0; flex-wrap: wrap; }
+  #toolbar button { padding: 6px 14px; border: 1px solid var(--border); border-radius: 4px; cursor: pointer; font-size: 13px; background: var(--input-bg); color: var(--text); white-space: nowrap; transition: background .15s; font-family: inherit; }
+  #toolbar button:hover { background: var(--hover); }
+  #toolbar button.active { background: var(--accent); border-color: var(--accent); color: #fff; }
+  #toolbar .sep { width: 1px; height: 24px; background: var(--border); margin: 0 4px; }
+  #toolbar .info { font-size: 12px; color: var(--text2); margin-left: auto; }
+  #main { display: flex; flex: 1; overflow: hidden; }
+  #left-panel { width: 260px; background: var(--panel); border-right: 1px solid var(--border); display: flex; flex-direction: column; overflow: hidden; flex-shrink: 0; }
+  #left-panel .panel-header { padding: 10px 12px; border-bottom: 1px solid var(--border); font-weight: 600; font-size: 13px; display: flex; justify-content: space-between; align-items: center; }
+  #search { margin: 8px 8px 4px 8px; padding: 6px 10px; border: 1px solid var(--border); border-radius: 4px; background: var(--input-bg); color: var(--text); font-size: 12px; outline: none; font-family: inherit; }
+  #search:focus { border-color: var(--accent); }
+  #lap-filter { padding: 0 8px 4px 8px; display: flex; flex-wrap: wrap; gap: 4px; align-items: center; }
+  #lap-filter .lap-label { font-size: 11px; color: var(--text2); margin-right: 4px; }
+  #lap-filter .lap-btn { padding: 2px 8px; font-size: 11px; border: 1px solid var(--border); border-radius: 3px; cursor: pointer; background: var(--input-bg); color: var(--text2); transition: all .12s; font-family: inherit; }
+  #lap-filter .lap-btn:hover { border-color: var(--accent); color: var(--text); }
+  #lap-filter .lap-btn.on { background: var(--accent); border-color: var(--accent); color: #fff; }
+  #object-list { flex: 1; overflow-y: auto; padding: 4px 0; }
+  #object-list .group-header { padding: 6px 12px; font-size: 12px; font-weight: 700; color: var(--text2); cursor: pointer; display: flex; align-items: center; gap: 4px; }
+  #object-list .group-header:hover { color: var(--text); }
+  #object-list .group-header .arrow { font-size: 10px; transition: transform .15s; }
+  #object-list .group-header.collapsed .arrow { transform: rotate(-90deg); }
+  #object-list .obj-item { padding: 5px 12px 5px 24px; font-size: 12px; cursor: pointer; border-left: 3px solid transparent; transition: all .1s; display: flex; align-items: center; gap: 6px; color: var(--text2); }
+  #object-list .obj-item:hover { background: rgba(255,255,255,.04); color: var(--text); }
+  #object-list .obj-item.selected { border-left-color: var(--accent); background: rgba(233,69,96,.12); color: var(--text); }
+  #object-list .obj-item .dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+  #object-list .obj-item .dot.static { background: #4fc3f7; }
+  #object-list .obj-item .dot.dynamic { background: #ffb74d; }
+  #object-list .obj-item .dot.checkpoint { background: #81c784; }
+  #viewport { flex: 1; position: relative; background: #1a1a2e; overflow: hidden; }
+  #right-panel { width: 280px; background: var(--panel); border-left: 1px solid var(--border); display: flex; flex-direction: column; overflow-y: auto; flex-shrink: 0; }
+  #right-panel .panel-header { padding: 10px 12px; border-bottom: 1px solid var(--border); font-weight: 600; font-size: 13px; position: sticky; top: 0; background: var(--panel); z-index: 1; }
+  .prop-section { padding: 8px 12px; border-bottom: 1px solid var(--border); }
+  .prop-section h4 { font-size: 12px; color: var(--text2); margin-bottom: 6px; }
+  .prop-row { display: flex; align-items: center; gap: 4px; margin-bottom: 4px; }
+  .prop-row label { width: 18px; font-size: 12px; color: var(--text2); text-align: center; flex-shrink: 0; }
+  .prop-row label.x { color: #ff5252; }
+  .prop-row label.y { color: #69f0ae; }
+  .prop-row label.z { color: #448aff; }
+  .prop-row input { flex: 1; width: 0; padding: 4px 6px; border: 1px solid var(--border); border-radius: 3px; background: var(--input-bg); color: var(--text); font-size: 12px; font-family: 'Consolas', 'Microsoft YaHei', monospace; outline: none; }
+  .prop-row input:focus { border-color: var(--accent); }
+  #no-selection { padding: 20px; text-align: center; color: var(--text2); font-size: 13px; }
+  #coords-display { position: absolute; bottom: 8px; left: 8px; color: var(--text2); font-size: 11px; font-family: 'Consolas', monospace; pointer-events: none; background: rgba(0,0,0,.5); padding: 4px 8px; border-radius: 4px; z-index: 5; }
+  #hint { position: absolute; bottom: 32px; left: 8px; color: var(--text2); font-size: 11px; pointer-events: none; background: rgba(0,0,0,.5); padding: 2px 8px; border-radius: 4px; z-index: 5; }
+  ::-webkit-scrollbar { width: 6px; } ::-webkit-scrollbar-track { background: transparent; } ::-webkit-scrollbar-thumb { background: #444; border-radius: 3px; }
+  input[type=number] { -moz-appearance: textfield; }
+  input[type=number]::-webkit-inner-spin-button, input[type=number]::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
+  #map-loading { position: absolute; top: 50%; left: 50%; transform: translate(-50%,-50%); color: var(--text2); font-size: 14px; pointer-events: none; z-index: 5; }
+  .move-play { padding:2px 10px; border:1px solid var(--accent); border-radius:4px; cursor:pointer; background:var(--accent); color:#fff; font-size:12px; font-family:inherit; margin-top:4px; }
+  .move-stop { padding:2px 10px; border:1px solid var(--border); border-radius:4px; cursor:pointer; background:var(--input-bg); color:var(--text); font-size:12px; font-family:inherit; margin-top:4px; margin-left:4px; }
+</style>
+</head>
+<body>
+
+<div id="toolbar">
+  <button id="btn-load">📂 加载赛道ZIP</button>
+  <button id="btn-map-overlay">🗺 地图叠加</button>
+  <span class="sep"></span>
+  <button id="btn-translate" class="active">↕ 移动</button>
+  <button id="btn-rotate">↻ 旋转</button>
+  <button id="btn-scale">⇲ 缩放</button>
+  <span class="sep"></span>
+  <button id="btn-undo">↩ 撤销</button>
+  <button id="btn-reset">🔄 重置</button>
+  <span class="sep"></span>
+  <button id="btn-export">📦 导出赛道ZIP</button>
+  <button id="btn-reset-cam">🔍 重置视角</button>
+  <button id="btn-add-object">➕ 添加物体</button>
+  <button id="btn-delete">🗑 删除物体</button>
+  <span class="info" id="toolbar-info">未加载文件</span>
+</div>
+
+<div id="main">
+  <div id="left-panel">
+    <div class="panel-header">物体列表 <span id="obj-count" style="font-weight:normal;font-size:12px;color:var(--text2)">0</span></div>
+    <input type="text" id="search" placeholder="搜索物体..." />
+    <div id="lap-filter">
+      <span class="lap-label">圈次:</span>
+      <button class="lap-btn on" id="lap-all">全部</button>
+      <span id="lap-buttons"></span>
+    </div>
+    <div style="padding:0 8px 4px 8px;">
+      <button id="btn-toggle-checkpoints" style="padding:2px 8px;font-size:11px;border:1px solid var(--border);border-radius:3px;cursor:pointer;background:var(--input-bg);color:var(--text2);font-family:inherit;width:100%;">📍 隐藏监测点</button>
+    </div>
+    <div id="object-list"></div>
+  </div>
+  <div id="viewport">
+    <div id="map-loading">点击"加载赛道ZIP"开始</div>
+    <div id="coords-display">X: -- Y: -- Z: --</div>
+    <div id="hint">右键旋转视角 | 滚轮缩放 | 点击物体选中 | 拖拽箭头编辑 | W/E/R切换 | F聚焦 | Del删除 | Ctrl+Z撤销</div>
+  </div>
+  <div id="right-panel">
+    <div class="panel-header">属性面板</div>
+    <div id="no-selection">点击物体或从左侧列表选中来编辑</div>
+    <div id="props-container" style="display:none">
+      <div class="prop-section"><h4>基本信息</h4>
+        <div class="prop-row"><label>名称</label><input id="prop-name" readonly style="flex:2"></div>
+        <div class="prop-row"><label>ID</label><input id="prop-id" readonly style="flex:2"></div>
+        <div class="prop-row"><label>类型</label><input id="prop-type" readonly style="flex:2"></div>
+      </div>
+      <div class="prop-section"><h4>位置</h4>
+        <div class="prop-row"><label class="x">X</label><input id="prop-px" type="number" step="0.01"></div>
+        <div class="prop-row"><label class="y">Y</label><input id="prop-py" type="number" step="0.01"></div>
+        <div class="prop-row"><label class="z">Z</label><input id="prop-pz" type="number" step="0.01"></div>
+      </div>
+      <div class="prop-section"><h4>旋转 (度)</h4>
+        <div class="prop-row"><label class="x">X</label><input id="prop-rx" type="number" step="0.1"></div>
+        <div class="prop-row"><label class="y">Y</label><input id="prop-ry" type="number" step="0.1"></div>
+        <div class="prop-row"><label class="z">Z</label><input id="prop-rz" type="number" step="0.1"></div>
+      </div>
+      <div class="prop-section"><h4>缩放</h4>
+        <div class="prop-row"><label class="x">X</label><input id="prop-sx" type="number" step="0.001"></div>
+        <div class="prop-row"><label class="y">Y</label><input id="prop-sy" type="number" step="0.001"></div>
+        <div class="prop-row"><label class="z">Z</label><input id="prop-sz" type="number" step="0.001"></div>
+      </div>
+      <div class="prop-section"><h4>其他</h4>
+        <div class="prop-row"><label>移动</label><input id="prop-move" style="flex:2"></div>
+        <div class="prop-row"><label>圈次</label><input id="prop-laps" style="flex:2"></div>
+        <div class="prop-row"><label>速度</label><input id="prop-speed" style="flex:2" type="number" step="0.01"></div>
+        <div class="prop-row"><label>激活</label><input id="prop-active" type="checkbox" style="flex:0;width:auto;margin-left:4px"></div>
+        <button class="move-play" id="btn-play-move" style="display:none;">▶ 播放移动</button>
+        <button class="move-stop" id="btn-stop-move" style="display:none;">⏹ 停止</button>
+      </div>
+      <div class="prop-section" id="movepoints-section" style="display:none"><h4>移动路径点</h4>
+        <div id="movepoints-container"></div>
+      </div>
+    </div>
+    <div id="map-adjust" style="display:none">
+      <div class="panel-header">地图调整</div>
+      <div class="prop-section"><h4>位置</h4>
+        <div class="prop-row"><label class="x">X</label><input id="map-adj-x" type="number" step="0.01"></div>
+        <div class="prop-row"><label class="z">Z</label><input id="map-adj-z" type="number" step="0.01"></div>
+      </div>
+      <div class="prop-section"><h4>大小</h4>
+        <div class="prop-row"><label>W</label><input id="map-adj-w" type="number" step="0.01"></div>
+        <div class="prop-row"><label>H</label><input id="map-adj-h" type="number" step="0.01"></div>
+      </div>
+      <div class="prop-section"><h4>透明度</h4>
+        <div class="prop-row"><input id="map-adj-opacity" type="range" min="0" max="100" value="65" style="flex:1"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<input type="file" id="file-input" accept=".zip" style="display:none">
+<input type="file" id="glb-input" accept=".glb" style="display:none">
+
+<!-- 模型选择弹窗 -->
+<div id="model-picker" style="position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);z-index:300;background:#16213e;border:2px solid var(--accent);border-radius:12px;padding:20px;min-width:300px;display:none;color:var(--text);font-family:inherit;">
+  <h3 style="color:var(--accent);margin-bottom:12px;">选择模型</h3>
+  <div style="margin-bottom:12px;">
+    <div style="font-size:12px;color:var(--text2);margin-bottom:6px;">已加载的模型:</div>
+    <div id="model-list" style="max-height:200px;overflow-y:auto;display:flex;flex-wrap:wrap;gap:4px;"></div>
+  </div>
+  <div style="margin-bottom:12px;">
+    <button id="btn-load-glb" style="padding:8px 14px;border:1px solid var(--border);border-radius:4px;cursor:pointer;background:var(--input-bg);color:var(--text);font-size:13px;font-family:inherit;">📂 加载新模型 (.glb)</button>
+    <span id="glb-name" style="font-size:11px;color:var(--text2);margin-left:4px;"></span>
+  </div>
+  <div style="margin-bottom:12px;font-size:12px;color:var(--text2);">
+    <span>位置: 相机前方 (X: <span id="mpx">0</span>, Z: <span id="mpz">0</span>)</span>
+  </div>
+  <div style="display:flex;gap:8px;justify-content:flex-end;">
+    <button id="btn-cancel-model" style="padding:8px 16px;border:1px solid var(--border);border-radius:4px;cursor:pointer;background:#333;color:var(--text);font-size:13px;font-family:inherit;">取消</button>
+    <button id="btn-confirm-model" style="padding:8px 16px;border:none;border-radius:4px;cursor:pointer;background:var(--accent);color:#fff;font-size:13px;font-family:inherit;">添加</button>
+  </div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<script type="importmap">
+{ "imports": { "three": "https://unpkg.com/three@0.160.0/build/three.module.js", "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/" } }
+</script>
+
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { TransformControls } from 'three/addons/controls/TransformControls.js';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+
+const DEG2RAD = Math.PI / 180, RAD2DEG = 180 / Math.PI;
+
+// ── Model defaults from 正式赛道 (name -> { type, scale, speed, moveType }) ──
+const MODEL_DEFAULTS = {
+  'coin.glb':      { type:'dynamic', scale:{x:0.1172,y:0.1172,z:0.1172}, speed:5, moveType:'None' },
+  'model.glb':     { type:'static',  scale:{x:0.0680,y:0.0680,z:0.0680}, speed:0.2, moveType:'PingPong' },
+  'car.glb':       { type:'static',  scale:{x:0.0570,y:0.0570,z:0.0570}, speed:5, moveType:'None' },
+  'BeginSign.glb': { type:'static',  scale:{x:0.4982,y:0.4982,z:0.4982}, speed:5, moveType:'None' },
+  'EndSign.glb':   { type:'static',  scale:{x:0.5875,y:0.5875,z:0.5875}, speed:5, moveType:'None' },
+  'rgb.glb':       { type:'static',  scale:{x:1.2724,y:1.2724,z:1.2724}, speed:0.2, moveType:'None' },
+  'beginDoor.glb': { type:'static',  scale:{x:1,y:1,z:1}, speed:5, moveType:'None' },
+  'crosswalk.glb': { type:'static',  scale:{x:0.1737,y:0.5385,z:0.1363}, speed:5, moveType:'None' },
+  'Stone.glb':     { type:'static',  scale:{x:0.4962,y:0.4962,z:0.4962}, speed:5, moveType:'None' },
+  'RoadSign0.glb': { type:'static',  scale:{x:0.2747,y:0.1053,z:0.1329}, speed:5, moveType:'None' },
+  'RoadSign1.glb': { type:'static',  scale:{x:0.1136,y:0.1136,z:0.1136}, speed:5, moveType:'None' },
+  'trafficlight':  { type:'static',  scale:{x:0.0655,y:0.0655,z:0.0655}, speed:5, moveType:'None' },
+  'trafficrect':   { type:'static',  scale:{x:1,y:1,z:0.2400}, speed:5, moveType:'None' },
+};
+
+const state = {
+  objects: [], groups: {}, meta: {},
+  selectedId: null, editMode: 'translate',
+  mapBlobUrl: null, mapOverlay: false, mapPlane: null,
+  activeLap: null, allLaps: [],
+  nextNewId: 99999,
+  undoStack: [], initialSnapshot: null,
+  undoActionStack: [],    // 'transform' | 'delete' | 'add' — what each undo step does
+  deletedStore: {},       // id -> { meta, group } — kept alive during undo window
+  specialRots: {},
+  movePathHelpers: {},
+  _animFrame: null, _animId: null,
+  pairs: {},   // id -> partnerId for linked objects (e.g. trafficlight <-> rgb.glb)
+};
+
+// ── Scene ──
+const viewportEl = document.getElementById('viewport');
+const canvas = document.createElement('canvas');
+viewportEl.appendChild(canvas);
+const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true });
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+renderer.shadowMap.enabled = true; renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+renderer.toneMapping = THREE.ACESFilmicToneMapping; renderer.toneMappingExposure = 1.0;
+
+const scene = new THREE.Scene();
+scene.background = new THREE.Color('#1a1a2e'); scene.fog = new THREE.Fog('#1a1a2e', 20, 80);
+
+const camera = new THREE.PerspectiveCamera(50, 2, 0.1, 200);
+camera.position.set(8, 6, -4);
+
+const orbitCtrl = new OrbitControls(camera, renderer.domElement);
+orbitCtrl.target.set(1.8, 0, 2.2); orbitCtrl.enableDamping = true; orbitCtrl.dampingFactor = 0.08;
+orbitCtrl.maxPolarAngle = Math.PI * 0.48; orbitCtrl.update();
+
+const transformCtrl = new TransformControls(camera, renderer.domElement);
+transformCtrl.setMode('translate'); transformCtrl.setSize(0.8); transformCtrl.space = 'local';
+let _dragOldPos = null, _dragOldQuat = null, _buddyOffset = null;
+transformCtrl.addEventListener('dragging-changed', (e) => {
+  orbitCtrl.enabled = !e.value;
+  if (e.value) {
+    saveSnapshot();
+    const g = state.groups[state.selectedId]; if (g) { _dragOldPos = g.position.clone(); _dragOldQuat = g.quaternion.clone(); }
+    // Store offset from selected to buddy
+    const buddy = state.groups[state.pairs[state.selectedId]];
+    if (buddy) _buddyOffset = buddy.position.clone().sub(state.groups[state.selectedId].position);
+  }
+  if (!e.value && state.selectedId != null) { syncPropsFromScene(); shiftMovePointsAfterDrag(); _dragOldPos = null; _dragOldQuat = null; _buddyOffset = null; }
+});
+transformCtrl.addEventListener('objectChange', () => {
+  if (state.selectedId == null) return;
+  syncPropsFromScene();
+  // Mirror to paired buddy using offset pivot
+  mirrorToBuddy();
+});
+scene.add(transformCtrl);
+
+// ── Lights ──
+scene.add(new THREE.AmbientLight('#8899cc', 1.8));
+const sun = new THREE.DirectionalLight('#ffffff', 4.5); sun.position.set(10, 20, 5);
+sun.castShadow = true; sun.shadow.mapSize.set(2048, 2048); sun.shadow.camera.near = 0.5; sun.shadow.camera.far = 80;
+sun.shadow.camera.left = -15; sun.shadow.camera.right = 15; sun.shadow.camera.top = 15; sun.shadow.camera.bottom = -15;
+sun.shadow.bias = -0.0001; scene.add(sun);
+scene.add(new THREE.HemisphereLight('#aaccff', '#334422', 1.2));
+
+// ── Grid & Ground ──
+const grid = new THREE.GridHelper(12, 12, '#444466', '#222244'); grid.position.y = -0.005; scene.add(grid);
+const groundGeo = new THREE.PlaneGeometry(30, 30);
+const ground = new THREE.Mesh(groundGeo, new THREE.MeshStandardMaterial({ color: '#222233', roughness: 0.9, metalness: 0 }));
+ground.rotation.x = -Math.PI / 2; ground.position.y = -0.01; ground.receiveShadow = true; ground.name = 'Ground'; scene.add(ground);
+
+// ── Axis ──
+function makeAxis(origin, dir, color, len = 1.5) {
+  const g = new THREE.Group(), mat = new THREE.MeshStandardMaterial({ color, emissive: color, emissiveIntensity: 0.6, roughness: 0.3 });
+  const rod = new THREE.Mesh(new THREE.CylinderGeometry(0.02, 0.02, len, 8), mat); rod.position.y = len / 2;
+  const tip = new THREE.Mesh(new THREE.ConeGeometry(0.06, 0.2, 8), mat); tip.position.y = len;
+  g.add(rod); g.add(tip); g.position.copy(origin);
+  if (dir.x === 1) g.rotation.z = -Math.PI / 2; else if (dir.x === -1) g.rotation.z = Math.PI / 2;
+  else if (dir.z === 1) g.rotation.x = Math.PI / 2; else if (dir.z === -1) g.rotation.x = -Math.PI / 2;
+  scene.add(g);
+}
+makeAxis(new THREE.Vector3(0, 0, 0), new THREE.Vector3(1, 0, 0), '#ff5252');
+makeAxis(new THREE.Vector3(0, 0, 0), new THREE.Vector3(0, 1, 0), '#69f0ae');
+makeAxis(new THREE.Vector3(0, 0, 0), new THREE.Vector3(0, 0, -1), '#448aff');
+
+// ── Selection ──
+const raycaster = new THREE.Raycaster(); raycaster.far = 30;
+
+renderer.domElement.addEventListener('pointerdown', (e) => {
+  state._clickPos = { x: e.clientX, y: e.clientY };
+});
+
+renderer.domElement.addEventListener('pointerup', (e) => {
+  if (!state._clickPos) return;
+  const dx = e.clientX - state._clickPos.x, dy = e.clientY - state._clickPos.y;
+  state._clickPos = null;
+  if (Math.abs(dx) > 2 || Math.abs(dy) > 2) return;
+
+  const rect = renderer.domElement.getBoundingClientRect();
+  const mx = ((e.clientX - rect.left) / rect.width) * 2 - 1;
+  const my = -((e.clientY - rect.top) / rect.height) * 2 + 1;
+  raycaster.setFromCamera(new THREE.Vector2(mx, my), camera);
+  const targets = Object.values(state.groups).filter(g => g.visible);
+
+  // Check if ground is significantly closer than model → treat as empty click
+  const groundHits = raycaster.intersectObject(ground, false);
+  const modelHits = raycaster.intersectObjects(targets, true);
+  if (groundHits.length && modelHits.length && groundHits[0].distance < modelHits[0].distance * 0.8) {
+    if (state.selectedId != null) { applyLapVisibility(); deselectObject(); }
+    return;
+  }
+
+  if (modelHits.length > 0) {
+    let o = modelHits[0].object;
+    while (o) { if (o.userData?.id != null) { selectFromScene(o.userData.id); return; } o = o.parent; }
+  }
+  if (state.selectedId != null) { applyLapVisibility(); deselectObject(); }
+});
+
+function resize() { const rect = viewportEl.getBoundingClientRect(); renderer.setSize(rect.width, rect.height); camera.aspect = rect.width / Math.max(rect.height, 1); camera.updateProjectionMatrix(); }
+window.addEventListener('resize', resize); resize();
+
+// ── Helpers ──
+function round4(v) { return Math.round(v * 10000) / 10000; }
+function disposeGroup(group) { group.traverse(c => { if (c.geometry && c.geometry !== groundGeo) c.geometry.dispose(); if (c.material) { if (Array.isArray(c.material)) c.material.forEach(m => m.dispose()); else c.material.dispose(); } }); }
+
+// ── Undo / Reset ──
+function saveSnapshot(action = 'transform') {
+  const snap = {};
+  for (const [id, group] of Object.entries(state.groups)) {
+    snap[id] = { x: group.position.x, y: group.position.y, z: group.position.z, rx: group.rotation.x, ry: group.rotation.y, rz: group.rotation.z, sx: group.scale.x, sy: group.scale.y, sz: group.scale.z };
+    const m = state.meta[+id]; if (m?.movePoints?.length >= 2) snap[id]._mps = m.movePoints.map(mp => ({ x: mp.x ?? 0, y: mp.y ?? 0, z: mp.z ?? 0 }));
+  }
+  snap._action = action;
+  state.undoStack.push(snap); state.undoActionStack.push(action);
+  if (state.undoStack.length > 6) { state.undoStack.shift(); state.undoActionStack.shift(); }
+}
+function registerDelete(id) {
+  // Keep group + meta alive so undo can restore them
+  state.deletedStore[id] = { meta: state.meta[id], group: state.groups[id] };
+}
+function undo() {
+  if (!state.undoStack.length) { toolbarInfo.textContent = '没有可撤销的操作'; return; }
+  const snap = state.undoStack.pop();
+  const action = state.undoActionStack.pop() || 'transform';
+
+  if (action === 'delete') {
+    // Restore deleted object
+    const deletedIds = Object.keys(snap).filter(k => k !== '_action' && k !== '_addedId' && !state.groups[+k]);
+    for (const idStr of deletedIds) {
+      const id = +idStr, stored = state.deletedStore[id];
+      if (!stored) continue;
+      state.groups[id] = stored.group; state.meta[id] = stored.meta;
+      state.objects.push(stored.meta);
+      stored.group.visible = true;
+      scene.add(stored.group);
+      if (stored.meta.movePoints?.length >= 2) buildMovePath(id);
+      delete state.deletedStore[id];
+    }
+    // Also restore transform for existing
+    applySnapshot(snap);
+    buildObjectList(document.getElementById('search').value||'');
+    toolbarInfo.textContent = `已撤销删除 (剩余 ${state.undoStack.length} 步)`;
+  } else if (action === 'add') {
+    const ids = snap._addedIds || (snap._addedId != null ? [snap._addedId] : []);
+    for (const addedId of ids) {
+      if (addedId != null && state.groups[addedId]) removeObjectSilent(addedId);
+    }
+    if (ids.length) { state.selectedId = null; updatePropsPanel(null); }
+    buildObjectList(document.getElementById('search').value||'');
+    toolbarInfo.textContent = `已撤销添加 (剩余 ${state.undoStack.length} 步)`;
+  } else {
+    applySnapshot(snap);
+    toolbarInfo.textContent = `已撤销 (剩余 ${state.undoStack.length} 步)`;
+  }
+  if (state.selectedId != null && state.groups[state.selectedId]) { syncPropsFromScene(); transformCtrl.detach(); transformCtrl.attach(state.groups[state.selectedId]); }
+  else { deselectObject(); }
+}
+
+function removeObjectSilent(id) {
+  const g = state.groups[id]; if (g) { transformCtrl.detach(); disposeGroup(g); scene.remove(g); }
+  delete state.groups[id]; delete state.meta[id];
+  if (state.movePathHelpers[id]) { scene.remove(state.movePathHelpers[id]); disposeGroup(state.movePathHelpers[id]); delete state.movePathHelpers[id]; }
+  state.objects = state.objects.filter(o => o.ID !== id);
+}
+
+function resetAll() {
+  if (!state.initialSnapshot) { toolbarInfo.textContent = '没有初始状态'; return; }
+  state.undoStack = []; state.undoActionStack = [];
+  // Restore all deleted objects
+  for (const [id, stored] of Object.entries(state.deletedStore)) {
+    state.groups[+id] = stored.group; state.meta[+id] = stored.meta;
+    state.objects.push(stored.meta); stored.group.visible = true; scene.add(stored.group);
+    if (stored.meta.movePoints?.length >= 2) buildMovePath(+id);
+  }
+  state.deletedStore = {};
+  applySnapshot(state.initialSnapshot);
+  deselectObject(); buildObjectList();
+  toolbarInfo.textContent = '已重置到加载状态';
+}
+function applySnapshot(snap) {
+  for (const [idStr, v] of Object.entries(snap)) {
+    if (idStr === '_action' || idStr === '_addedId') continue;
+    const g = state.groups[+idStr]; if (!g) continue;
+    g.position.set(v.x, v.y, v.z); g.rotation.set(v.rx, v.ry, v.rz); g.scale.set(v.sx, v.sy, v.sz);
+    if (v._mps && state.meta[+idStr]) { state.meta[+idStr].movePoints = v._mps.map(mp => ({ x: mp.x, y: mp.y, z: mp.z })); buildMovePath(+idStr); }
+  }
+}
+function deselectObject() { if (state.selectedId != null) applyLapVisibility(); state.selectedId = null; transformCtrl.detach(); updatePropsPanel(null); document.querySelectorAll('.obj-item').forEach(el => el.classList.remove('selected')); }
+
+// ── MovePoints sync after drag ──
+function shiftMovePointsAfterDrag() {
+  if (!_dragOldPos || !_dragOldQuat) return;
+  const g = state.groups[state.selectedId], m = state.meta[state.selectedId]; if (!g || !m?.movePoints?.length) return;
+  const dx = g.position.x - _dragOldPos.x, dy = g.position.y - _dragOldPos.y, dz = g.position.z - _dragOldPos.z;
+  const qDelta = g.quaternion.clone().multiply(_dragOldQuat.clone().invert());
+  for (const mp of m.movePoints) {
+    const pt = new THREE.Vector3(mp.x ?? 0, mp.y ?? 0, -(mp.z ?? 0));
+    pt.sub(_dragOldPos).applyQuaternion(qDelta).add(_dragOldPos).add(new THREE.Vector3(dx, dy, dz));
+    mp.x = pt.x; mp.y = pt.y; mp.z = -pt.z;
+  }
+  buildMovePath(state.selectedId);
+}
+
+// ── Mirror to paired buddy (trafficlight ↔ rgb offset pivot) ──
+function mirrorToBuddy() {
+  if (!_dragOldPos || !_dragOldQuat || !_buddyOffset) return;
+  const g = state.groups[state.selectedId], buddy = state.groups[state.pairs[state.selectedId]];
+  if (!g || !buddy) return;
+  // buddy position orbits around selected
+  const qDelta = new THREE.Quaternion().multiplyQuaternions(g.quaternion, _dragOldQuat.clone().invert());
+  buddy.position.copy(g.position).add(_buddyOffset.clone().applyQuaternion(qDelta));
+  // buddy gets same rotation delta
+  buddy.quaternion.copy(qDelta.multiply(buddy.quaternion));
+  // update for next frame
+  _dragOldPos.copy(g.position);
+  _dragOldQuat.copy(g.quaternion);
+  _buddyOffset = buddy.position.clone().sub(g.position);
+  // sync meta from scene so export picks up new buddy transform
+  const bm = state.meta[state.pairs[state.selectedId]];
+  if (bm) { bm.position = bm.position || {}; bm.position.x = round4(buddy.position.x); bm.position.y = round4(buddy.position.y); bm.position.z = round4(buddy.position.z); }
+}
+
+// ── Loading ──
+const fileInput = document.getElementById('file-input'), mapLoading = document.getElementById('map-loading'), toolbarInfo = document.getElementById('toolbar-info');
+document.getElementById('btn-load').addEventListener('click', () => fileInput.click());
+fileInput.addEventListener('change', async (e) => { if (e.target.files[0]) await loadZip(e.target.files[0]); });
+
+async function loadZip(file) {
+  mapLoading.style.display = 'block'; mapLoading.textContent = '正在加载压缩包...'; toolbarInfo.textContent = '加载中...';
+  try {
+    const zip = await JSZip.loadAsync(file);
+    let jsonFile = null;
+    for (const [path, z] of Object.entries(zip.files)) { if (path.endsWith('objects.json') && !path.includes('__MACOSX')) { jsonFile = z; break; } }
+    if (!jsonFile) throw new Error('压缩包中未找到 objects.json');
+    const jsonText = await jsonFile.async('text');
+    let parsed; try { parsed = JSON.parse(jsonText); } catch { parsed = JSON.parse('{"objects":' + jsonText + '}'); }
+    state.objects = parsed.objects || parsed;
+
+    // Save source rotation for special objects BEFORE the Z/Y conversion
+    const _specialIds = [4253, 4566, 1053], _srcRots = {};
+    for (const o of state.objects) { if (_specialIds.includes(o.ID)) _srcRots[o.ID] = { x: o.rotation?.x ?? 0, y: o.rotation?.y ?? 0, z: o.rotation?.z ?? 0 }; }
+    for (const obj of state.objects) { if (obj.position) obj.position.z = -(obj.position.z ?? 0); if (obj.rotation) obj.rotation.y = (360 - (obj.rotation.y ?? 0)) % 360; }
+
+    let mapFile = null;
+    for (const [path, z] of Object.entries(zip.files)) { if (path.endsWith('map.png') && !path.includes('__MACOSX')) { mapFile = z; break; } }
+    if (mapFile) { if (state.mapBlobUrl) URL.revokeObjectURL(state.mapBlobUrl); state.mapBlobUrl = URL.createObjectURL(await mapFile.async('blob')); }
+
+    clearScene();
+    mapLoading.textContent = '正在加载模型...';
+    const modelBlobs = {};
+    const modelNames = new Set(state.objects.filter(o => o.name && o.name.endsWith('.glb')).map(o => o.name));
+    for (const name of modelNames) { for (const [path, z] of Object.entries(zip.files)) { if (path.split('/').pop() === name && !path.includes('__MACOSX')) { modelBlobs[name] = URL.createObjectURL(await z.async('blob')); break; } } }
+    state.modelBlobs = modelBlobs;
+
+    const loader = new GLTFLoader(); let loaded = 0; const total = state.objects.length;
+    for (const obj of state.objects) { const group = await createGroup(obj, loader, modelBlobs); if (group) { state.groups[obj.ID] = group; state.meta[obj.ID] = obj; } loaded++; if (loaded % 30 === 0 || loaded === total) mapLoading.textContent = `加载模型... ${loaded}/${total}`; }
+
+    // Apply special rotations
+    const cg = state.groups[4253]; if (cg) { state.specialRots[4253] = { srcRot: _srcRots[4253] }; cg.rotateOnWorldAxis(new THREE.Vector3(-1,0,0), Math.PI/2); cg.rotateOnWorldAxis(new THREE.Vector3(0,0,-1), -Math.PI/2); }
+    const bg = state.groups[4566]; if (bg) { state.specialRots[4566] = { srcRot: _srcRots[4566] }; bg.rotateOnWorldAxis(new THREE.Vector3(0,1,0), Math.PI); bg.rotateOnWorldAxis(new THREE.Vector3(0,0,1), Math.PI); }
+    const eg = state.groups[1053]; if (eg) { state.specialRots[1053] = { srcRot: _srcRots[1053] }; eg.rotateOnWorldAxis(new THREE.Vector3(0,1,0), Math.PI); eg.rotateOnWorldAxis(new THREE.Vector3(0,0,1), Math.PI); }
+
+    mapLoading.style.display = 'none'; toolbarInfo.textContent = `已加载 ${state.objects.length} 个物体`;
+    state.initialSnapshot = {};
+    for (const [id, g] of Object.entries(state.groups)) {
+      state.initialSnapshot[id] = { x: g.position.x, y: g.position.y, z: g.position.z, rx: g.rotation.x, ry: g.rotation.y, rz: g.rotation.z, sx: g.scale.x, sy: g.scale.y, sz: g.scale.z };
+      const m = state.meta[+id]; if (m?.movePoints?.length >= 2) state.initialSnapshot[id]._mps = m.movePoints.map(mp => ({ x: mp.x ?? 0, y: mp.y ?? 0, z: mp.z ?? 0 }));
+    }
+    state.undoStack = [];
+    // Register existing trafficlight↔rgb pair from source data
+    if (state.groups[6203] && state.groups[6011]) { state.pairs[6203] = 6011; state.pairs[6011] = 6203; }
+    scanAllLaps(); state.activeLap = null; buildLapButtons(); applyLapVisibility();
+    buildAllMovePaths(); fitCameraToScene(); buildObjectList();
+  } catch (err) { console.error(err); mapLoading.textContent = '错误: ' + err.message; toolbarInfo.textContent = '加载失败'; }
+}
+
+async function createGroup(obj, loader, modelBlobs) {
+  const group = new THREE.Group(); group.name = `${obj.name}_${obj.ID}`; group.userData = { id: obj.ID, modelName: obj.name, type: obj.type };
+  group.position.set(obj.position?.x ?? 0, obj.position?.y ?? 0, obj.position?.z ?? 0);
+  group.rotation.set((obj.rotation?.x ?? 0) * DEG2RAD, (obj.rotation?.y ?? 0) * DEG2RAD, (obj.rotation?.z ?? 0) * DEG2RAD);
+  group.scale.set(obj.scale?.x ?? 1, obj.scale?.y ?? 1, obj.scale?.z ?? 1);
+  const nm = obj.name;
+  if (obj.type === 'checkpoint') {
+    const geo = new THREE.BoxGeometry(1, 1, 1), mat = new THREE.MeshStandardMaterial({ color: '#448aff', opacity: 0.35, transparent: true, depthWrite: false });
+    const box = new THREE.Mesh(geo, mat); group.add(box);
+    box.add(new THREE.LineSegments(new THREE.EdgesGeometry(geo), new THREE.LineBasicMaterial({ color: '#6699ff', transparent: true, opacity: 0.5 })));
+    scene.add(group); return group;
+  }
+  if (nm === 'trafficlight') { group.add(new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.6, 0.3), new THREE.MeshStandardMaterial({ color: '#ff5555', opacity: 0.6, transparent: true }))); scene.add(group); return group; }
+  if (nm === 'trafficrect') { group.add(new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.1, 0.3), new THREE.MeshStandardMaterial({ color: '#55ff55', opacity: 0.5, transparent: true }))); scene.add(group); return group; }
+  const blobUrl = modelBlobs?.[nm];
+  if (!blobUrl) { group.add(new THREE.Mesh(new THREE.BoxGeometry(0.25, 0.25, 0.25), new THREE.MeshStandardMaterial({ color: '#ff00ff', roughness: 0.5 }))); scene.add(group); return group; }
+  try { const gltf = await loader.loadAsync(blobUrl); if (gltf.scene) { gltf.scene.traverse(c => { if (c.isMesh) { c.castShadow = true; c.receiveShadow = true; } }); group.add(gltf.scene); } }
+  catch (err) { group.add(new THREE.Mesh(new THREE.BoxGeometry(0.25, 0.25, 0.25), new THREE.MeshStandardMaterial({ color: '#ff8800', roughness: 0.5 }))); }
+  scene.add(group); return group;
+}
+
+function clearScene() {
+  for (const g of Object.values(state.groups)) { disposeGroup(g); scene.remove(g); }
+  clearAllMovePaths(); state.groups = {}; state.meta = {}; deselectObject();
+  if (state.mapPlane) { scene.remove(state.mapPlane); disposeGroup(state.mapPlane); state.mapPlane = null; }
+  if (state.modelBlobs) { for (const url of Object.values(state.modelBlobs)) URL.revokeObjectURL(url); state.modelBlobs = {}; }
+  stopAnim();
+}
+
+// ── PingPong Path ──
+function buildMovePath(id) {
+  const obj = state.meta[id]; if (!obj?.movePoints || obj.movePoints.length < 2) return;
+  if (state.movePathHelpers[id]) { scene.remove(state.movePathHelpers[id]); disposeGroup(state.movePathHelpers[id]); }
+  const helpers = new THREE.Group(); helpers.name = `movePath_${id}`; helpers.userData._notSelectable = true;
+  const mat = new THREE.MeshBasicMaterial({ color: '#ff69b4', depthTest: true });
+  const lmat = new THREE.LineBasicMaterial({ color: '#ff69b4', depthTest: true, transparent: true, opacity: 0.7 });
+  const geo = new THREE.SphereGeometry(0.04, 8, 8), pts = [];
+  for (const mp of obj.movePoints) {
+    const px = mp.x ?? 0, py = mp.y ?? 0, pz = -(mp.z ?? 0);
+    const s = new THREE.Mesh(geo, mat); s.position.set(px, py, pz); s.renderOrder = 1000; helpers.add(s);
+    pts.push(new THREE.Vector3(px, py, pz));
+  }
+  if (pts.length >= 2) { const lg = new THREE.BufferGeometry().setFromPoints(pts); const l = new THREE.Line(lg, lmat); l.renderOrder = 999; helpers.add(l); }
+  scene.add(helpers); state.movePathHelpers[id] = helpers;
+}
+function buildAllMovePaths() { clearAllMovePaths(); for (const [id, obj] of Object.entries(state.meta)) { if (obj.movePoints && obj.movePoints.length >= 2) buildMovePath(+id); } }
+function clearAllMovePaths() { for (const [id, h] of Object.entries(state.movePathHelpers)) { scene.remove(h); disposeGroup(h); } state.movePathHelpers = {}; }
+
+// ── Object List (lap-filtered, default collapsed) ──
+function buildObjectList(filter = '') {
+  const list = document.getElementById('object-list'); list.innerHTML = '';
+  if (!state.objects.length) { list.innerHTML = '<div style="padding:12px;color:var(--text2);font-size:12px">没有加载物体</div>'; return; }
+  const groups = {};
+  for (const obj of state.objects) {
+    if (state.activeLap != null) { const laps = obj.appearLaps || []; if (laps.length > 0 && !laps.includes(state.activeLap)) continue; }
+    const k = obj.name || '未知'; if (!groups[k]) groups[k] = []; groups[k].push(obj);
+  }
+  const fl = filter.toLowerCase(); let visibleCount = 0;
+  for (const [name, items] of Object.entries(groups)) {
+    const filtered = filter ? items.filter(o => o.ID.toString().includes(fl) || name.toLowerCase().includes(fl)) : items;
+    if (!filtered.length) continue; visibleCount += filtered.length;
+    const tc = { static: '#4fc3f7', dynamic: '#ffb74d', checkpoint: '#81c784' };
+    const h = document.createElement('div'); h.className = 'group-header collapsed';
+    h.innerHTML = `<span class="arrow">▼</span> <span class="dot" style="background:${tc[filtered[0].type]||'#888'};width:8px;height:8px;border-radius:50%;display:inline-block"></span> ${name} (${filtered.length})`;
+    h.addEventListener('click', () => { h.classList.toggle('collapsed'); h.nextElementSibling.style.display = h.classList.contains('collapsed') ? 'none' : 'block'; });
+    const div = document.createElement('div'); div.style.display = 'none';
+    for (const obj of filtered) {
+      const lapsStr = (obj.appearLaps || []).map(l => '圈'+l).join(' ');
+      const item = document.createElement('div'); item.className = 'obj-item' + (state.selectedId === obj.ID ? ' selected' : '');
+      item.innerHTML = `<span class="dot ${obj.type||'static'}"></span> ID:${obj.ID} <span style="font-size:10px;color:var(--text2);margin-left:auto">${lapsStr}</span>`;
+      item.addEventListener('click', (ev) => { ev.stopPropagation(); selectObject(obj.ID); });
+      div.appendChild(item);
+    }
+    list.appendChild(h); list.appendChild(div);
+  }
+  document.getElementById('obj-count').textContent = `${visibleCount} / ${state.objects.length} 个物体`;
+}
+document.getElementById('search').addEventListener('input', (e) => buildObjectList(e.target.value));
+
+// ── Lap Filter ──
+function scanAllLaps() { const s = new Set(); for (const obj of state.objects) { if (obj.appearLaps) obj.appearLaps.forEach(l => s.add(l)); } state.allLaps = [...s].sort((a,b)=>a-b); }
+function buildLapButtons() {
+  const c = document.getElementById('lap-buttons'); c.innerHTML = '';
+  document.getElementById('lap-all').classList.toggle('on', state.activeLap === null);
+  for (const lap of state.allLaps) {
+    const count = state.objects.filter(o => { const laps = o.appearLaps || []; return laps.length === 0 || laps.includes(lap); }).length;
+    const btn = document.createElement('button'); btn.className = 'lap-btn' + (state.activeLap === lap ? ' on' : ''); btn.textContent = `圈${lap} (${count})`;
+    btn.addEventListener('click', () => { state.activeLap = state.activeLap === lap ? null : lap; applyLapVisibility(); buildLapButtons(); buildObjectList(document.getElementById('search').value||''); });
+    c.appendChild(btn);
+  }
+}
+document.getElementById('lap-all').addEventListener('click', () => { state.activeLap = null; applyLapVisibility(); buildLapButtons(); buildObjectList(document.getElementById('search').value||''); });
+let _checkpointsHidden = false;
+function applyLapVisibility(forceAll = false) {
+  for (const obj of state.objects) {
+    const g = state.groups[obj.ID]; if (!g) continue;
+    const isSelected = obj.ID === state.selectedId;
+    if (!forceAll && isSelected) continue;
+    const laps = obj.appearLaps || [];
+    const lapVis = state.activeLap === null ? true : laps.length === 0 ? true : laps.includes(state.activeLap);
+    const cpVis = _checkpointsHidden && obj.type === 'checkpoint' ? false : true;
+    g.visible = obj.isActive !== false && lapVis && cpVis;
+    // Hide/show move path helpers too
+    const ph = state.movePathHelpers[obj.ID];
+    if (ph) ph.visible = g.visible;
+  }
+}
+buildLapButtons();
+document.getElementById('btn-toggle-checkpoints').addEventListener('click', () => { _checkpointsHidden = !_checkpointsHidden; document.getElementById('btn-toggle-checkpoints').textContent = _checkpointsHidden ? '📍 显示监测点' : '📍 隐藏监测点'; applyLapVisibility(); toolbarInfo.textContent = _checkpointsHidden ? '已隐藏监测点' : '已显示监测点'; });
+
+// ── Selection ──
+function selectObject(id) { if (state.selectedId !== null && state.selectedId !== id) applyLapVisibility(); state.selectedId = id; const g = state.groups[id]; if (g) { g.visible = true; transformCtrl.attach(g); updatePropsPanel(state.meta[id]); } highlightListItem(id); toolbarInfo.textContent = `已选中 ID:${id} — 拖拽箭头编辑`; }
+function selectFromScene(id) { if (state.selectedId !== null && state.selectedId !== id) applyLapVisibility(); state.selectedId = id; const g = state.groups[id]; if (g) { g.visible = true; if (transformCtrl.object !== g) transformCtrl.attach(g); updatePropsPanel(state.meta[id]); } highlightListItem(id); toolbarInfo.textContent = `已选中 ID:${id} — 拖拽箭头编辑`; }
+function highlightListItem(id) { document.querySelectorAll('.obj-item').forEach(el => el.classList.remove('selected')); document.querySelectorAll('.obj-item').forEach(el => { if (el.textContent.includes(`ID:${id}`)) el.classList.add('selected'); }); }
+
+// ── Props Panel ──
+function updatePropsPanel(meta) {
+  const c = document.getElementById('props-container'), ns = document.getElementById('no-selection');
+  if (!meta) { c.style.display = 'none'; ns.style.display = 'block'; return; }
+  c.style.display = 'block'; ns.style.display = 'none';
+  const id = meta.ID, g = state.groups[id];
+  const px = g ? round4(g.position.x) : round4(meta.position?.x ?? 0);
+  const py = g ? round4(g.position.y) : round4(meta.position?.y ?? 0);
+  const pz = g ? round4(-g.position.z) : round4(-(meta.position?.z ?? 0));
+  const rx = g ? round4(g.rotation.x * RAD2DEG) : round4(meta.rotation?.x ?? 0);
+  const ry = g ? round4(((360 - g.rotation.y * RAD2DEG) % 360 + 360) % 360) : round4((360 - (meta.rotation?.y ?? 0) + 360) % 360);
+  const rz = g ? round4(g.rotation.z * RAD2DEG) : round4(meta.rotation?.z ?? 0);
+  const sx = g ? round4(g.scale.x) : (meta.scale?.x ?? 1), sy = g ? round4(g.scale.y) : (meta.scale?.y ?? 1), sz = g ? round4(g.scale.z) : (meta.scale?.z ?? 1);
+  document.getElementById('prop-name').value = meta.name || ''; document.getElementById('prop-id').value = meta.ID; document.getElementById('prop-type').value = meta.type || '';
+  document.getElementById('prop-px').value = px; document.getElementById('prop-py').value = py; document.getElementById('prop-pz').value = pz;
+  document.getElementById('prop-rx').value = rx; document.getElementById('prop-ry').value = ry; document.getElementById('prop-rz').value = rz;
+  document.getElementById('prop-sx').value = sx; document.getElementById('prop-sy').value = sy; document.getElementById('prop-sz').value = sz;
+  document.getElementById('prop-move').value = meta.moveType || 'None';
+  const lapsEl = document.getElementById('prop-laps');
+  if (document.activeElement !== lapsEl) {
+    lapsEl.value = (meta.appearLaps || []).join(', ');
+  }
+  document.getElementById('prop-speed').value = meta.speed || 5; document.getElementById('prop-active').checked = meta.isActive !== false;
+  rebuildMovePointsEditor(meta);
+  // Show/hide play button
+  const hasMps = meta.movePoints && meta.movePoints.length >= 2;
+  document.getElementById('btn-play-move').style.display = hasMps ? 'inline-block' : 'none';
+  document.getElementById('btn-stop-move').style.display = hasMps ? 'inline-block' : 'none';
+}
+function syncPropsFromScene() { const id = state.selectedId; if (id == null) return; const g = state.groups[id], m = state.meta[id]; if (!g || !m) return; m.position = m.position || {}; m.position.x = round4(g.position.x); m.position.y = round4(g.position.y); m.position.z = round4(g.position.z); m.rotation = m.rotation || {}; m.rotation.x = round4(g.rotation.x*RAD2DEG); m.rotation.y = round4(g.rotation.y*RAD2DEG); m.rotation.z = round4(g.rotation.z*RAD2DEG); m.scale = m.scale || {}; m.scale.x = round4(g.scale.x); m.scale.y = round4(g.scale.y); m.scale.z = round4(g.scale.z); updatePropsPanel(m); }
+
+function rebuildMovePointsEditor(meta) {
+  const sect = document.getElementById('movepoints-section'), container = document.getElementById('movepoints-container');
+  const mps = meta?.movePoints; const show = mps && mps.length >= 2; sect.style.display = show ? 'block' : 'none';
+  if (!show) { container.innerHTML = ''; return; } container.innerHTML = '';
+  const id = meta.ID;
+  for (let i = 0; i < mps.length; i++) {
+    const mp = mps[i]; const ex = (mp.x ?? 0), ey = (mp.y ?? 0), ez = (mp.z ?? 0);
+    const div = document.createElement('div'); div.className = 'prop-section'; div.innerHTML = `<h4>点${i}</h4>`;
+    const rows = [['X','x',ex],['Y','y',ey],['Z','z',ez]];
+    for (const [label,axis,val] of rows) {
+      const row = document.createElement('div'); row.className = 'prop-row';
+      row.innerHTML = `<label class="${axis}">${label}</label><input type="number" step="0.01" value="${val}" data-mpid="${id}" data-mpi="${i}" data-mpaxis="${axis}">`;
+      div.appendChild(row);
+    }
+    container.appendChild(div);
+  }
+  container.querySelectorAll('input').forEach(inp => { inp.addEventListener('input', (e) => { const oid = parseInt(e.target.dataset.mpid), oi = parseInt(e.target.dataset.mpi), axis = e.target.dataset.mpaxis, val = parseFloat(e.target.value) || 0; const m = state.meta[oid]; if (!m?.movePoints) return; m.movePoints[oi] = m.movePoints[oi] || { x:0,y:0,z:0 }; m.movePoints[oi][axis] = val; buildMovePath(oid); }); });
+}
+
+// ── Property Inputs ──
+['prop-px','prop-py','prop-pz'].forEach((elid,i) => {
+  document.getElementById(elid).addEventListener('focus', () => { const g = state.groups[state.selectedId]; if (g) { saveSnapshot(); _dragOldPos = g.position.clone(); _dragOldQuat = g.quaternion.clone(); const buddy = state.groups[state.pairs[state.selectedId]]; if (buddy) _buddyOffset = buddy.position.clone().sub(g.position); } });
+  document.getElementById(elid).addEventListener('input', () => {
+    const g = state.groups[state.selectedId]; if (!g) return;
+    let val = parseFloat(document.getElementById(elid).value) || 0; if (i === 2) val = -val;
+    g.position[['x','y','z'][i]] = val; syncPropsFromScene();
+    // Mirror to paired buddy (position only, no rotation from panel position input)
+    if (_dragOldPos && _buddyOffset) {
+      const buddy = state.groups[state.pairs[state.selectedId]];
+      if (buddy) buddy.position.copy(g.position).add(_buddyOffset);
+    }
+    if (_dragOldPos) { const dx = g.position.x - _dragOldPos.x, dy = g.position.y - _dragOldPos.y, dz = g.position.z - _dragOldPos.z; const m = state.meta[state.selectedId]; if (m?.movePoints?.length >= 2 && (dx || dy || dz)) { for (const mp of m.movePoints) { mp.x = (mp.x ?? 0) + dx; mp.y = (mp.y ?? 0) + dy; mp.z = (mp.z ?? 0) - dz; } buildMovePath(state.selectedId); _dragOldPos.copy(g.position); } }
+  });
+});
+['prop-rx','prop-ry','prop-rz'].forEach((elid,i) => {
+  document.getElementById(elid).addEventListener('focus', () => { const g = state.groups[state.selectedId]; if (g) { saveSnapshot(); _dragOldQuat = g.quaternion.clone(); const buddy = state.groups[state.pairs[state.selectedId]]; if (buddy) _buddyOffset = buddy.position.clone().sub(g.position); } });
+  document.getElementById(elid).addEventListener('input', () => {
+    const g = state.groups[state.selectedId]; if (!g) return;
+    let valDeg = parseFloat(document.getElementById(elid).value) || 0; if (i === 1) valDeg = (360 - valDeg + 360) % 360;
+    g.rotation[['x','y','z'][i]] = valDeg * DEG2RAD; syncPropsFromScene();
+    if (_dragOldQuat) {
+      const qDelta = g.quaternion.clone().multiply(_dragOldQuat.clone().invert());
+      // Mirror to buddy: orbit position + apply rotation delta
+      const buddy = state.groups[state.pairs[state.selectedId]];
+      if (buddy && _buddyOffset) { buddy.position.copy(g.position).add(_buddyOffset.clone().applyQuaternion(qDelta)); buddy.quaternion.premultiply(qDelta); _buddyOffset = buddy.position.clone().sub(g.position); }
+      _dragOldQuat.copy(g.quaternion);
+    }
+    if (_dragOldQuat) { const m = state.meta[state.selectedId]; if (m?.movePoints?.length >= 2) { const invOld = _dragOldQuat.clone().invert(); const qDelta2 = g.quaternion.clone().multiply(invOld); if (qDelta2.length() > 0.0001) { const center = g.position.clone(); for (const mp of m.movePoints) { const pt = new THREE.Vector3(mp.x ?? 0, mp.y ?? 0, -(mp.z ?? 0)); pt.sub(center).applyQuaternion(qDelta2).add(center); mp.x = pt.x; mp.y = pt.y; mp.z = -pt.z; } buildMovePath(state.selectedId); _dragOldQuat = g.quaternion.clone(); } } }
+  });
+});
+['prop-sx','prop-sy','prop-sz'].forEach((elid,i) => { document.getElementById(elid).addEventListener('input', () => { const g = state.groups[state.selectedId]; if (!g) return; g.scale[['x','y','z'][i]] = parseFloat(document.getElementById(elid).value) || 0.001; syncPropsFromScene(); }); });
+document.getElementById('prop-active').addEventListener('change', (e) => { const m = state.meta[state.selectedId], g = state.groups[state.selectedId]; if (!m || !g) return; m.isActive = e.target.checked; const laps = m.appearLaps || []; g.visible = e.target.checked && (state.activeLap === null || laps.includes(state.activeLap)); });
+document.getElementById('prop-move').addEventListener('input', (e) => { const m = state.meta[state.selectedId]; if (m) m.moveType = e.target.value; });
+document.getElementById('prop-laps').addEventListener('focus', (e) => {
+  state._lapsEditId = state.selectedId;
+});
+document.getElementById('prop-laps').addEventListener('blur', (e) => {
+  const id = state._lapsEditId; state._lapsEditId = null;
+  if (id == null) return;
+  const m = state.meta[id]; if (!m) return;
+  const vals = e.target.value.replace(/，/g,',').replace(/\s+/g,'').split(',').map(s => parseInt(s)).filter(n => !isNaN(n));
+  if (vals.length === 0) {
+    e.target.value = (m.appearLaps || []).join(', ');
+    return;
+  }
+  m.appearLaps = vals;
+  const buddyId = state.pairs[id], buddy = state.meta[buddyId];
+  if (buddy) { buddy.appearLaps = [...vals]; }
+  applyLapVisibility(true);
+  buildObjectList(document.getElementById('search').value||'');
+  // If still selected, refresh panel
+  if (state.selectedId === id) updatePropsPanel(m);
+  toolbarInfo.textContent = `已更新 ID:${id} 圈次为 ${vals.join(',')}`;
+});
+
+// ── Animation ──
+function playMoveAnim() {
+  const id = state.selectedId; if (id == null) return;
+  const g = state.groups[id], m = state.meta[id]; if (!g || !m?.movePoints || m.movePoints.length < 2) return;
+  stopAnim();
+  const pts = m.movePoints.map(mp => new THREE.Vector3(mp.x ?? 0, mp.y ?? 0, -(mp.z ?? 0)));
+  const speed = Math.max(0.01, m.speed || 1);
+  let t = 0, dir = 1;
+  const dists = []; for (let j = 1; j < pts.length; j++) dists.push(pts[j].distanceTo(pts[j-1]));
+  const totalDist = dists.reduce((a,b)=>a+b,0);
+  state._animId = id;
+  let lastT = performance.now();
+  function step(now) {
+    if (state._animId !== id) return;
+    const dt = Math.min(now - lastT, 100); lastT = now;
+    t += dir * (dt / 1000) * speed;
+    if (t >= totalDist) { t = totalDist; dir = -1; }
+    if (t <= 0) { t = 0; dir = 1; }
+    let seg = 0, acc = 0;
+    for (let j = 1; j < pts.length; j++) { const d = dists[j-1]; if (t <= acc + d) { seg = j - 1; break; } acc += d; seg = j - 1; }
+    const frac = Math.max(0, Math.min(1, (t - acc) / (dists[seg] || 1)));
+    const pos = pts[seg].clone().lerp(pts[seg + 1], frac);
+    g.position.copy(pos);
+    syncPropsFromScene();
+    state._animFrame = requestAnimationFrame(step);
+  }
+  state._animFrame = requestAnimationFrame(step);
+}
+function stopAnim() { if (state._animFrame) { cancelAnimationFrame(state._animFrame); state._animFrame = null; state._animId = null; } }
+document.getElementById('btn-play-move').addEventListener('click', playMoveAnim);
+document.getElementById('btn-stop-move').addEventListener('click', stopAnim);
+
+// ── Toolbar ──
+document.getElementById('btn-translate').addEventListener('click', () => setEditMode('translate'));
+document.getElementById('btn-rotate').addEventListener('click', () => setEditMode('rotate'));
+document.getElementById('btn-scale').addEventListener('click', () => setEditMode('scale'));
+function setEditMode(mode) { state.editMode = mode; transformCtrl.setMode(mode); document.getElementById('btn-translate').classList.toggle('active', mode === 'translate'); document.getElementById('btn-rotate').classList.toggle('active', mode === 'rotate'); document.getElementById('btn-scale').classList.toggle('active', mode === 'scale'); }
+setEditMode('translate');
+document.getElementById('btn-reset-cam').addEventListener('click', fitCameraToScene);
+document.getElementById('btn-undo').addEventListener('click', undo);
+document.getElementById('btn-reset').addEventListener('click', resetAll);
+document.getElementById('btn-map-overlay').addEventListener('click', toggleMapOverlay);
+
+// ── Add Object ──
+let _pickerModel = null;
+document.getElementById('btn-add-object').addEventListener('click', showModelPicker);
+function showModelPicker() {
+  const picker = document.getElementById('model-picker'), list = document.getElementById('model-list'); list.innerHTML = '';
+  const names = Object.keys(state.modelBlobs || {});
+
+  // Always show trafficlight as a special option (paired with rgb.glb)
+  const hasRgb = !!state.modelBlobs?.['rgb.glb'];
+  if (hasRgb) {
+    const btn = document.createElement('button'); btn.textContent = '🚦 trafficlight + rgb.glb';
+    btn.style.cssText = 'padding:4px 10px;border:1px solid #ff5555;border-radius:4px;cursor:pointer;background:var(--input-bg);color:#ff8888;font-size:12px;font-family:inherit;';
+    btn.addEventListener('click', () => { _pickerModel = 'trafficlight'; document.querySelectorAll('#model-list button').forEach(b => { b.style.background = 'var(--input-bg)'; b.style.color = 'var(--text)'; }); btn.style.background = 'var(--accent)'; btn.style.color = '#fff'; });
+    list.appendChild(btn);
+  }
+
+  if (!names.length && !hasRgb) list.innerHTML = '<span style="font-size:12px;color:var(--text2)">没有已加载的模型</span>';
+  for (const name of names) { const btn = document.createElement('button'); btn.textContent = name; btn.style.cssText = 'padding:4px 10px;border:1px solid var(--border);border-radius:4px;cursor:pointer;background:var(--input-bg);color:var(--text);font-size:12px;font-family:inherit;'; btn.addEventListener('click', () => { _pickerModel = name; document.querySelectorAll('#model-list button').forEach(b => { b.style.background = 'var(--input-bg)'; b.style.color = 'var(--text)'; }); btn.style.background = 'var(--accent)'; btn.style.color = '#fff'; }); list.appendChild(btn); }
+  const cd = camera.getWorldDirection(new THREE.Vector3()), pos = camera.position.clone().add(cd.multiplyScalar(3));
+  document.getElementById('mpx').textContent = pos.x.toFixed(1); document.getElementById('mpz').textContent = pos.z.toFixed(1);
+  _pickerModel = state._lastPickedModel || names[0] || null; document.getElementById('glb-name').textContent = state._lastGlbFile || '';
+  picker.style.display = 'block';
+}
+document.getElementById('btn-cancel-model').addEventListener('click', () => { document.getElementById('model-picker').style.display = 'none'; });
+document.getElementById('btn-load-glb').addEventListener('click', () => document.getElementById('glb-input').click());
+document.getElementById('glb-input').addEventListener('change', async (e) => { const file = e.target.files[0]; if (!file) return; const name = file.name, url = URL.createObjectURL(file); try { await new GLTFLoader().loadAsync(url); if (!state.modelBlobs) state.modelBlobs = {}; if (state.modelBlobs[name]) URL.revokeObjectURL(state.modelBlobs[name]); state.modelBlobs[name] = url; _pickerModel = name; state._lastPickedModel = name; state._lastGlbFile = name; document.getElementById('glb-name').textContent = name; showModelPicker(); } catch (err) { console.warn('GLB 加载失败', err); URL.revokeObjectURL(url); } });
+document.getElementById('btn-confirm-model').addEventListener('click', async () => {
+  saveSnapshot('add'); document.getElementById('model-picker').style.display = 'none'; if (!_pickerModel) return;
+  const cd = camera.getWorldDirection(new THREE.Vector3()), pos = camera.position.clone().add(cd.multiplyScalar(3));
+  const addLaps = state.activeLap === null ? [...state.allLaps] : [state.activeLap];
+
+  // ── trafficlight special: create paired trafficlight + rgb.glb ──
+  if (_pickerModel === 'trafficlight' && state.modelBlobs?.['rgb.glb']) {
+    const idTL = state.nextNewId--, idRGB = state.nextNewId--;
+    // Source offset from 正式赛道: rgb relative to trafficlight
+    // trafficlight (3.654, 0.219, 1.764), rgb (3.671, -0.033, 1.726)
+    // offset: rgb - tl = (0.017, -0.252, -0.038)
+    const rOff = { x: 0.0172725, y: -0.252181, z: 0.0376968 };
+    const pTL = { x: round4(pos.x), y: 0.22, z: round4(pos.z) };
+    const pRGB = { x: round4(pos.x + rOff.x), y: 0.22 + rOff.y, z: round4(pos.z + rOff.z) };
+    // Look up existing rgb for scale
+    const exRGB = state.objects.find(o => o.name === 'rgb.glb');
+    const sclRGB = exRGB?.scale || { x: 1.27, y: 1.27, z: 1.27 };
+    const sclTL = { x: 0.065, y: 0.065, z: 0.065 };
+
+    const objTL = { name: 'trafficlight', type: 'static', ID: idTL, position: pTL, rotation: { x: 0, y: 79.3, z: 0 }, scale: sclTL, isActive: true, startTime: 0, moveType: 'None', movePoints: [], speed: 5, respawnTime: 5, appearLaps: addLaps, groupId: 0, orderIndex: 0, triggerAppearIDs: [], triggerDisappearIDs: [] };
+    const objRGB = { name: 'rgb.glb', type: 'static', ID: idRGB, position: pRGB, rotation: { x: 0, y: 158, z: 0 }, scale: sclRGB, isActive: true, startTime: 0, moveType: 'None', movePoints: [], speed: 0.2, respawnTime: 5, appearLaps: addLaps, groupId: 0, orderIndex: 0, triggerAppearIDs: [], triggerDisappearIDs: [] };
+
+    state.objects.push(objTL); state.objects.push(objRGB);
+    const gTL = await createGroup(objTL, new GLTFLoader(), state.modelBlobs);
+    const gRGB = await createGroup(objRGB, new GLTFLoader(), state.modelBlobs);
+    if (gTL) { state.groups[idTL] = gTL; state.meta[idTL] = objTL; }
+    if (gRGB) { state.groups[idRGB] = gRGB; state.meta[idRGB] = objRGB; }
+    state.pairs[idTL] = idRGB; state.pairs[idRGB] = idTL;
+    if (state.undoStack.length) { state.undoStack[state.undoStack.length - 1]._addedIds = [idTL, idRGB]; }
+    buildObjectList(document.getElementById('search').value||''); selectObject(idTL);
+    toolbarInfo.textContent = `已添加 trafficlight + rgb.glb ID:${idTL},${idRGB}`;
+    return;
+  }
+
+  // ── Normal .glb model ──
+  state._lastPickedModel = _pickerModel; const id = state.nextNewId--;
+  const def = MODEL_DEFAULTS[_pickerModel] || { type:'static', scale:{x:1,y:1,z:1}, speed:5, moveType:'None' };
+  const existing = state.objects.find(o => o.name === _pickerModel);
+  const defScale = def.scale; const defY = existing?.position?.y ?? 0;
+  const defType = def.type, defMoveType = def.moveType, defSpeed = def.speed;
+  let copyMps = [], copyMoveType = defMoveType, copySpeed = defSpeed; let srcPos = null;
+  // Copy movePoints from a class-wide object (one with PingPong) if default allows
+  const classObj = state.objects.find(o => o.name === _pickerModel && (o.movePoints || []).length >= 2);
+  if (classObj) { srcPos = { x: classObj.position?.x ?? 0, y: classObj.position?.y ?? 0, z: classObj.position?.z ?? 0 }; copyMps = (classObj.movePoints || []).map(mp => ({ x: mp.x ?? 0, y: mp.y ?? 0, z: mp.z ?? 0 })); copyMoveType = classObj.moveType || defMoveType; copySpeed = classObj.speed || defSpeed; }
+  if (srcPos && copyMps.length) { const dx = pos.x - srcPos.x, dy = defY - srcPos.y, dz = pos.z - srcPos.z; for (const mp of copyMps) { mp.x += dx; mp.y += dy; mp.z -= dz; } }
+  const newObj = { name: _pickerModel, type: defType, ID: id, position: { x: round4(pos.x), y: defY, z: round4(pos.z) }, rotation: { x: 0, y: 0, z: 0 }, scale: { x: defScale.x, y: defScale.y, z: defScale.z }, isActive: true, startTime: 0, moveType: copyMoveType, movePoints: copyMps, speed: copySpeed, respawnTime: 5, appearLaps: addLaps, groupId: 0, orderIndex: 0, triggerAppearIDs: [], triggerDisappearIDs: [] };
+  state.objects.push(newObj); const group = await createGroup(newObj, new GLTFLoader(), state.modelBlobs);
+  if (group) { state.groups[id] = group; state.meta[id] = newObj; if (copyMps.length >= 2) buildMovePath(id); }
+  if (state.undoStack.length) state.undoStack[state.undoStack.length - 1]._addedId = id;
+  buildObjectList(document.getElementById('search').value||''); selectObject(id); toolbarInfo.textContent = `已添加 ${_pickerModel} ID:${id}`;
+});
+
+// ── Map Overlay ──
+function toggleMapOverlay() { state.mapOverlay = !state.mapOverlay; document.getElementById('btn-map-overlay').classList.toggle('active', state.mapOverlay); if (state.mapOverlay) showMapOverlay(); else { if (state.mapPlane) { scene.remove(state.mapPlane); disposeGroup(state.mapPlane); state.mapPlane = null; } } document.getElementById('map-adjust').style.display = state.mapOverlay ? 'block' : 'none'; }
+function showMapOverlay() { if (!state.mapBlobUrl) { toolbarInfo.textContent = '无地图图片'; state.mapOverlay = false; return; } if (state.mapPlane) { updateMapFromInputs(); return; } new THREE.TextureLoader().load(state.mapBlobUrl, (tex) => { const cx = 1.98, cz = -2.5, w = 4.0, h = 5.1512; state.mapPlane = new THREE.Mesh(new THREE.PlaneGeometry(w, h), new THREE.MeshBasicMaterial({ map: tex, transparent: true, opacity: 0.65, depthWrite: false, side: THREE.DoubleSide })); state.mapPlane.rotation.x = -Math.PI / 2; state.mapPlane.position.set(cx, 0.005, cz); state.mapPlane.renderOrder = 1; scene.add(state.mapPlane); document.getElementById('map-adj-x').value = cx; document.getElementById('map-adj-z').value = cz; document.getElementById('map-adj-w').value = w; document.getElementById('map-adj-h').value = h; document.getElementById('map-adj-opacity').value = 65; }); }
+function updateMapFromInputs() { if (!state.mapPlane) return; const x = parseFloat(document.getElementById('map-adj-x').value) || 0, z = parseFloat(document.getElementById('map-adj-z').value) || 0, w = Math.max(0.1, parseFloat(document.getElementById('map-adj-w').value) || 1), h = Math.max(0.1, parseFloat(document.getElementById('map-adj-h').value) || 1), opacity = parseInt(document.getElementById('map-adj-opacity').value) / 100; state.mapPlane.position.set(x, 0.005, z); state.mapPlane.geometry.dispose(); state.mapPlane.geometry = new THREE.PlaneGeometry(w, h); state.mapPlane.material.opacity = opacity; }
+['map-adj-x','map-adj-z','map-adj-w','map-adj-h'].forEach(id => document.getElementById(id).addEventListener('input', updateMapFromInputs));
+document.getElementById('map-adj-opacity').addEventListener('input', updateMapFromInputs);
+
+// ── Camera ──
+function fitCameraToScene() { const box = new THREE.Box3(); for (const g of Object.values(state.groups)) { if (g.visible) box.expandByObject(g); } if (box.isEmpty()) box.setFromCenterAndSize(new THREE.Vector3(1.8, 0, 2.2), new THREE.Vector3(5, 2, 5)); const c = box.getCenter(new THREE.Vector3()), s = box.getSize(new THREE.Vector3()), d = Math.max(s.x, s.y, s.z) * 1.5; orbitCtrl.target.copy(c); camera.position.set(c.x + d * 0.5, c.y + d, c.z + d * 0.5); orbitCtrl.update(); }
+
+// ── Export ──
+async function exportZip() {
+  syncAllFromScene(); const objects = [...state.objects].sort((a, b) => (a.ID || 0) - (b.ID || 0));
+  const zip = new JSZip(); zip.file('objects.json', JSON.stringify({ objects }, null, 2));
+  const modelNames = [...new Set(objects.map(o => o.name).filter(n => n && n.endsWith('.glb')))];
+  let packed = 0;
+  for (const name of modelNames) { const url = state.modelBlobs?.[name]; if (!url) continue; try { const resp = await fetch(url); zip.file('models/' + name, await resp.blob()); packed++; } catch (e) { console.warn('导出模型失败: ' + name); } }
+  if (state.mapBlobUrl) { try { const resp = await fetch(state.mapBlobUrl); zip.file('map.png', await resp.blob()); } catch (e) {} }
+  const zipBlob = await zip.generateAsync({ type: 'blob' });
+  const now = new Date(), ts = now.getFullYear().toString().slice(2) + String(now.getMonth()+1).padStart(2,'0') + String(now.getDate()).padStart(2,'0') + '-' + String(now.getHours()).padStart(2,'0') + String(now.getMinutes()).padStart(2,'0') + String(now.getSeconds()).padStart(2,'0');
+  const name = prompt('请输入导出文件名:', `鲁棒赛道-${ts}`) || `鲁棒赛道-${ts}`;
+  const a = document.createElement('a'); a.href = URL.createObjectURL(zipBlob); a.download = `${name}.zip`; a.click();
+  toolbarInfo.textContent = `已导出ZIP: ${name}.zip — ${objects.length} 个物体, ${packed} 个模型`;
+}
+document.getElementById('btn-export').addEventListener('click', exportZip);
+function syncAllFromScene() {
+  for (const [idStr, group] of Object.entries(state.groups)) {
+    const id = parseInt(idStr), m = state.meta[id]; if (!m) continue;
+    m.position = m.position || {}; m.position.x = round4(group.position.x); m.position.y = round4(group.position.y); m.position.z = round4(-group.position.z);
+    m.rotation = m.rotation || {};
+    if (state.specialRots[id]) { const sr = state.specialRots[id].srcRot; m.rotation.x = round4(sr.x); m.rotation.y = round4(sr.y); m.rotation.z = round4(sr.z); }
+    else { m.rotation.x = round4(group.rotation.x*RAD2DEG); m.rotation.y = round4(((360-(group.rotation.y*RAD2DEG))%360+360)%360); m.rotation.z = round4(group.rotation.z*RAD2DEG); }
+    m.scale = m.scale || {}; m.scale.x = round4(group.scale.x); m.scale.y = round4(group.scale.y); m.scale.z = round4(group.scale.z);
+    m.isActive = group.visible;
+  }
+}
+
+// ── Keyboard ──
+window.addEventListener('keydown', (e) => { if (e.target.tagName === 'INPUT') return; switch (e.key) { case 'w':case 'W':setEditMode('translate');break; case 'e':case'E':setEditMode('rotate');break; case 'r':case'R':setEditMode('scale');break; case 'g':case'G':grid.visible=!grid.visible;break; case 'Delete':case 'Backspace':if(state.selectedId!=null)deleteSelected();break; case 'f':case 'F':if(state.selectedId!=null&&state.groups[state.selectedId]){orbitCtrl.target.copy(state.groups[state.selectedId].position);orbitCtrl.update();}break; case 'Escape':deselectObject();break; case 'z':case 'Z':if(e.ctrlKey||e.metaKey){e.preventDefault();undo();}break; } });
+function deleteSelected() {
+  const id = state.selectedId; if (id == null) return;
+  registerDelete(id);
+  saveSnapshot('delete');
+  removeObjectSilent(id);
+  state.selectedId = null; updatePropsPanel(null);
+  buildObjectList(document.getElementById('search').value||'');
+  toolbarInfo.textContent = `已删除物体 ID:${id}`;
+}
+
+document.getElementById('btn-delete').addEventListener('click', () => { if (state.selectedId != null) deleteSelected(); });
+
+// ── HUD ──
+setInterval(() => { const cd = document.getElementById('coords-display'); if (state.selectedId != null && state.groups[state.selectedId]) { const p = state.groups[state.selectedId].position; cd.textContent = `选中 → X:${p.x.toFixed(2)} Y:${p.y.toFixed(2)} Z:${p.z.toFixed(2)}  ID:${state.selectedId}`; } else { cd.textContent = `相机 → X:${orbitCtrl.target.x.toFixed(2)} Y:${orbitCtrl.target.y.toFixed(2)} Z:${orbitCtrl.target.z.toFixed(2)}`; } }, 100);
+
+function animate() { requestAnimationFrame(animate); orbitCtrl.update(); renderer.render(scene, camera); }
+animate(); updatePropsPanel(null);
+toolbarInfo.textContent = '就绪 — 点击"加载赛道ZIP"选择文件';
+</script>
+</body>
+</html>
