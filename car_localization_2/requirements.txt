@@ -1,0 +1,12 @@
+# ====== 小车定位系统 - 依赖包 ======
+# 安装方式: pip install -r requirements.txt
+
+# OpenCV (图像采集 + 计算机视觉)
+opencv-python>=4.5
+
+# NumPy (矩阵运算)
+numpy>=1.20
+
+# AprilTag 检测 (二选一，推荐第一个)
+pupil-apriltags>=1.0
+# apriltag>=3.4  # 备选，需要 C 编译环境
